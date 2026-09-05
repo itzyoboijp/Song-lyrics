@@ -1,0 +1,188 @@
+#install vs code and python
+#install pip install pygame-ce 
+#by using the terminal in vscode
+
+import tkinter as tk
+import time
+import random
+
+try:
+    import pygame
+    HAS_AUDIO = True
+except ImportError:
+    HAS_AUDIO = False
+
+AUDIO_FILE = ""
+
+#you can change the lyrics below
+
+LYRICS = [
+    (4.9, "Oh, I don't care if you're insincere"),
+    (11.1, "Just tell me what I want to hear"),
+    (16.4, "You know where to find me"),
+    (19.5, "The place where we lived all these years, oh"),
+    (27.1, "And tell me you love me"),
+    (29.6, "That's all that I need to hear"),
+]
+ 
+BOX_W, BOX_H = 300, 250
+FONT = ("Helvetica", 22, "bold")
+BG_COLOR = "#fdfdf5"   #the background color this will just affect the start button
+FG_COLOR = "#000000"   #the text color this will just affect the start button
+
+RISE_SPEED = 90      
+SPAWN_INTERVAL_MIN = 0 
+SAFE_EDGE_MARGIN = 220
+BOTTOM_SPAWN_OFFSET = 150
+
+class LyricBox:
+
+    def __init__(self, master, text, x, y):
+        self.master = master
+        self.win = tk.Toplevel(master)
+        self.win.overrideredirect(True)  
+        self.win.attributes("-topmost", True)
+        self.win.configure(bg=BG_COLOR)
+        self.win.geometry(f"{BOX_W}x{BOX_H}+{int(x)}+{int(y)}")
+        self.win.resizable(False, False)
+
+        self.full_text = text
+
+        self.label = tk.Label(
+            self.win,
+            text="",
+            font=FONT,
+            bg=BG_COLOR,
+            fg=FG_COLOR,
+            wraplength=BOX_W - 30,
+            justify="center"
+        )
+        self.label.pack(expand=True, fill="both", padx=15, pady=15)
+
+        self.typewriter_index = 0
+        self.typewriter()
+
+        self.x = x
+        self.y = float(y)
+
+        self.flash_state = False
+        self.flash()
+
+    def rise(self, dy):
+        self.y -= dy
+        self.win.geometry(f"{BOX_W}x{BOX_H}+{int(self.x)}+{int(self.y)}")
+
+    def is_offscreen(self):
+        return self.y + BOX_H < -50
+    
+    def typewriter(self):
+        if self.typewriter_index <= len(self.full_text):
+            self.label.config(text=self.full_text[:self.typewriter_index])
+            self.typewriter_index += 1
+            self.win.after(100, self.typewriter)
+
+    def flash(self):
+        if self.flash_state:
+            bg, fg = "black", "white"   # you can change the color of the flash here
+        else:
+            bg, fg = "white", "black"   # you can change the color of the flash here
+        self.flash_state = not self.flash_state
+
+        try:
+            self.win.configure(bg=bg)
+            self.label.configure(bg=bg, fg=fg)
+        except tk.TclError:
+            return 
+
+        self.win.after(1000, self.flash)
+
+
+class LyricFloatApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Lyric Float Controller")
+        self.root.geometry(f"{BOX_W}x{BOX_H}")
+        self.root.configure(bg=BG_COLOR)
+        self.root.resizable(False, False)
+
+        self.start_btn = tk.Button(
+            root, text="Start", font=FONT, bg=BG_COLOR, fg=FG_COLOR,
+            relief="flat", command=self.start
+        )
+        self.start_btn.pack(expand=True, fill="both", padx=15, pady=15)
+
+        self.screen_w = root.winfo_screenwidth()
+        self.screen_h = root.winfo_screenheight()
+
+        self.next_lyric_idx = 0
+        self.boxes = []
+        self.last_frame_time = None
+        self.current_side = "left" 
+
+    def random_safe_x(self):
+        center_x = self.screen_w // 2
+        spacing = BOX_W + 60  
+        
+        left_x = center_x - spacing
+        right_x = center_x + 60
+        
+        if self.current_side == "left":
+            self.current_side = "right"
+            return left_x
+        else:
+            self.current_side = "left"
+            return right_x
+
+    def start(self):
+        self.start_btn.pack_forget()
+        self.root.iconify()  
+        self.start_time = time.time()
+        self.last_frame_time = self.start_time
+
+        if HAS_AUDIO and AUDIO_FILE:
+            try:
+                pygame.mixer.init()
+                pygame.mixer.music.load(AUDIO_FILE)
+                pygame.mixer.music.play()
+            except Exception as e:
+                print(f"Audio failed to load: {e}")
+
+        self.tick()
+
+    def tick(self):
+        now = time.time()
+        elapsed = now - self.start_time
+        dt = now - self.last_frame_time
+        self.last_frame_time = now
+
+        while (self.next_lyric_idx < len(LYRICS) and
+               LYRICS[self.next_lyric_idx][0] <= elapsed):
+            t, text = LYRICS[self.next_lyric_idx]
+            x = self.random_safe_x()
+            y = self.screen_h - BOX_H - BOTTOM_SPAWN_OFFSET
+            box = LyricBox(self.root, text, x, y)
+            self.boxes.append(box)
+            self.next_lyric_idx += 1
+
+        dy = RISE_SPEED * dt
+        for box in self.boxes:
+            box.rise(dy)
+
+        still_visible = []
+        for box in self.boxes:
+            if box.is_offscreen():
+                try:
+                    box.win.destroy()
+                except tk.TclError:
+                    pass
+            else:
+                still_visible.append(box)
+        self.boxes = still_visible
+
+        if self.next_lyric_idx < len(LYRICS) or self.boxes:
+            self.root.after(16, self.tick)
+
+if _name_ == "_main_":
+    root = tk.Tk()
+    app = LyricFloatApp(root)
+    root.mainloop()
